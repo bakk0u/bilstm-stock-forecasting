@@ -37,7 +37,9 @@ def train_one(cfg: Config):
     df = add_indicators(df)
     df = make_supervised(df, cfg.target_col, cfg.horizon)
 
-    feature_cols = [c for c in df.columns if c not in ["Date", "target"]]
+    # Keep ONLY numeric columns, then remove the target
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    feature_cols = [c for c in numeric_cols if c != "target"]
     # Exclude leak-prone future target col only; keeping Close is fine because it's "today's" close in the window.
     # Remove Adj Close if missing
     feature_cols = [c for c in feature_cols if c in df.columns]
@@ -45,6 +47,9 @@ def train_one(cfg: Config):
     train_df, val_df, test_df = time_split(df, cfg.train_ratio, cfg.val_ratio)
 
     # Scale features on train only (important for credibility)
+    bad = train_df[feature_cols].select_dtypes(exclude=[np.number]).columns.tolist()
+    print("Non-numeric feature cols:", bad)
+    print(train_df[feature_cols].dtypes)
     scaler = StandardScaler()
     scaler.fit(train_df[feature_cols].values)
 
@@ -150,3 +155,4 @@ def train_one(cfg: Config):
 if __name__ == "__main__":
     cfg = Config()
     train_one(cfg)
+
