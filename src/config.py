@@ -16,8 +16,7 @@ class Config:
     val_ratio: float = 0.10  # remaining goes to test
 
     # Walk-forward evaluation (more credible than random split)
-    use_walk_forward: bool = True
-    walk_step: int = 20  # re-train every N days
+    
 
     # Model
     hidden_size: int = 64
@@ -36,3 +35,4 @@ class Config:
     # Output
     out_models: str = "outputs/models"
     out_plots: str = "outputs/plots"
+
