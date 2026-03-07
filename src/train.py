@@ -19,15 +19,9 @@ def time_split(df: pd.DataFrame, train_ratio: float, val_ratio: float):
     n_train = int(n * train_ratio)
     n_val = int(n * val_ratio)
     train = df.iloc[:n_train].copy()
-    val = df.iloc[n_train:n_train+n_val].copy()
-    test = df.iloc[n_train+n_val:].copy()
+    val = df.iloc[n_train:n_train + n_val].copy()
+    test = df.iloc[n_train + n_val:].copy()
     return train, val, test
-
-def prepare_arrays(df: pd.DataFrame, feature_cols: list[str]):
-    X = df[feature_cols].values.astype(np.float32)
-    y = df["target"].values.astype(np.float32)
-    close_today = df["Close"].values.astype(np.float32)  # for baseline alignment
-    return X, y, close_today
 
 def train_one(cfg: Config):
     set_seed(cfg.seed)
@@ -37,19 +31,16 @@ def train_one(cfg: Config):
     df = add_indicators(df)
     df = make_supervised(df, cfg.target_col, cfg.horizon)
 
-    # Keep ONLY numeric columns, then remove the target
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     feature_cols = [c for c in numeric_cols if c != "target"]
-    # Exclude leak-prone future target col only; keeping Close is fine because it's "today's" close in the window.
-    # Remove Adj Close if missing
     feature_cols = [c for c in feature_cols if c in df.columns]
 
     train_df, val_df, test_df = time_split(df, cfg.train_ratio, cfg.val_ratio)
 
-    # Scale features on train only (important for credibility)
     bad = train_df[feature_cols].select_dtypes(exclude=[np.number]).columns.tolist()
-    print("Non-numeric feature cols:", bad)
-    print(train_df[feature_cols].dtypes)
+    if bad:
+        raise ValueError(f"Non-numeric feature columns found: {bad}")
+
     scaler = StandardScaler()
     scaler.fit(train_df[feature_cols].values)
 
@@ -59,16 +50,21 @@ def train_one(cfg: Config):
         close_today = split["Close"].values.astype(np.float32)
         return X, y, close_today
 
-    X_tr, y_tr, close_tr = transform(train_df)
+    X_tr, y_tr, _ = transform(train_df)
     X_va, y_va, close_va = transform(val_df)
     X_te, y_te, close_te = transform(test_df)
 
-    # Build sequences
+    if len(X_tr) <= cfg.lookback:
+        raise ValueError(f"Train split too small for lookback={cfg.lookback}")
+    if len(X_va) <= cfg.lookback:
+        raise ValueError(f"Validation split too small for lookback={cfg.lookback}")
+    if len(X_te) <= cfg.lookback:
+        raise ValueError(f"Test split too small for lookback={cfg.lookback}")
+
     Xtr_s, ytr_s = make_sequences(X_tr, y_tr, cfg.lookback)
     Xva_s, yva_s = make_sequences(X_va, y_va, cfg.lookback)
     Xte_s, yte_s = make_sequences(X_te, y_te, cfg.lookback)
 
-    # Baseline (aligned with y_*_s; today close at same index as y)
     close_va_aligned = close_va[cfg.lookback:]
     close_te_aligned = close_te[cfg.lookback:]
     base_va = baseline_last_value(yva_s, close_va_aligned)
@@ -89,16 +85,26 @@ def train_one(cfg: Config):
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     loss_fn = nn.MSELoss()
 
-    tr_loader = DataLoader(SequenceDataset(Xtr_s, ytr_s), batch_size=cfg.batch_size, shuffle=True)
-    va_loader = DataLoader(SequenceDataset(Xva_s, yva_s), batch_size=cfg.batch_size, shuffle=False)
+    tr_loader = DataLoader(
+        SequenceDataset(Xtr_s, ytr_s),
+        batch_size=cfg.batch_size,
+        shuffle=True
+    )
+    va_loader = DataLoader(
+        SequenceDataset(Xva_s, yva_s),
+        batch_size=cfg.batch_size,
+        shuffle=False
+    )
 
     best_val = float("inf")
     best_path = f"{cfg.out_models}/{cfg.ticker}_bilstm.pt"
     bad_epochs = 0
+    history = []
 
     for epoch in range(1, cfg.epochs + 1):
         model.train()
         tr_losses = []
+
         for xb, yb in tqdm(tr_loader, desc=f"Epoch {epoch}/{cfg.epochs}", leave=False):
             xb, yb = xb.to(dev), yb.to(dev)
             pred = model(xb)
@@ -110,11 +116,11 @@ def train_one(cfg: Config):
             opt.step()
             tr_losses.append(loss.item())
 
-        # Validation
         model.eval()
         va_losses = []
         preds = []
         trues = []
+
         with torch.no_grad():
             for xb, yb in va_loader:
                 xb, yb = xb.to(dev), yb.to(dev)
@@ -123,15 +129,23 @@ def train_one(cfg: Config):
                 preds.append(pred.cpu().numpy().reshape(-1))
                 trues.append(yb.cpu().numpy().reshape(-1))
 
-        va_loss = float(np.mean(va_losses))
+        train_mse = float(np.mean(tr_losses))
+        val_mse = float(np.mean(va_losses))
         preds = np.concatenate(preds)
         trues = np.concatenate(trues)
+        val_mae = mae(trues, preds)
 
-        print(f"Epoch {epoch}: train_mse={np.mean(tr_losses):.6f} val_mse={va_loss:.6f} val_mae={mae(trues, preds):.4f}")
+        history.append({
+            "epoch": epoch,
+            "train_mse": train_mse,
+            "val_mse": val_mse,
+            "val_mae": val_mae,
+        })
 
-        # Early stopping
-        if va_loss < best_val - 1e-6:
-            best_val = va_loss
+        print(f"Epoch {epoch}: train_mse={train_mse:.6f} val_mse={val_mse:.6f} val_mae={val_mae:.4f}")
+
+        if val_mse < best_val - 1e-6:
+            best_val = val_mse
             bad_epochs = 0
             torch.save(
                 {
@@ -139,7 +153,8 @@ def train_one(cfg: Config):
                     "scaler_mean": scaler.mean_,
                     "scaler_scale": scaler.scale_,
                     "feature_cols": feature_cols,
-                    "cfg": cfg.__dict__,
+                    "best_val_loss": best_val,
+                    "cfg": vars(cfg),
                 },
                 best_path,
             )
@@ -149,10 +164,14 @@ def train_one(cfg: Config):
                 print("Early stopping triggered.")
                 break
 
+    history_df = pd.DataFrame(history)
+    history_path = f"{cfg.out_plots}/{cfg.ticker}_training_history.csv"
+    history_df.to_csv(history_path, index=False)
+    print(f"Saved training history: {history_path}")
+
     print(f"Saved best model to: {best_path}")
     return best_path
 
 if __name__ == "__main__":
     cfg = Config()
     train_one(cfg)
-
