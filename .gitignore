@@ -6,3 +6,4 @@ data/
 outputs/models/*.pt
 outputs/plots/*.png
 .DS_Store
+.idea/
