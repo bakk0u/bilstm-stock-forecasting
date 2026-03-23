@@ -109,6 +109,22 @@ This is an important result rather than a failure:
 - financial return prediction is highly noisy
 - strong methodology matters more than optimistic one-off metrics
 
+## Key results
+
+### Fixed-split test evaluation
+- Zero baseline: MAE = 0.014505, RMSE = 0.018616
+- Mean baseline: MAE = 0.014054, RMSE = 0.018220
+- BiLSTM: MAE = 0.014468, RMSE = 0.018407, Directional Accuracy = 58.79%, Correlation = 0.0849
+
+### Walk-forward evaluation
+- Zero baseline: MAE = 0.017968, RMSE = 0.025462
+- Mean baseline: MAE = 0.017694, RMSE = 0.025391
+- Ridge baseline: MAE = 0.018543, RMSE = 0.026265
+- BiLSTM: MAE = 0.019907, RMSE = 0.028306, Directional Accuracy = 52.03%, Correlation = 0.0956
+
+### Interpretation
+The fixed-split evaluation suggests modest predictive structure, but the more realistic walk-forward evaluation shows that the signal is not robust enough to consistently outperform simple baselines. This highlights the importance of rigorous out-of-sample testing in financial ML.
+
 ## Current conclusion
 
 This project demonstrates a complete and disciplined financial ML workflow:
