@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import Ridge
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -204,6 +205,12 @@ def fit_one_fold(
     pred_zero = baseline_zero(trues)
     pred_mean = baseline_mean(trues, train_mean_target)
 
+    ridge = Ridge(alpha=1.0)
+    ridge.fit(X_train, y_train_raw)
+
+    ridge_test_block = scaler.transform(X_all[test_start:test_end]).astype(np.float32)
+    ridge_pred = ridge.predict(ridge_test_block).astype(np.float32)
+
     return {
         "test_start": test_start,
         "test_end": test_end,
@@ -211,8 +218,8 @@ def fit_one_fold(
         "y_pred": preds,
         "y_zero": pred_zero,
         "y_mean": pred_mean,
+        "y_ridge": ridge_pred,
     }
-
 
 def walk_forward_evaluate(cfg: Config):
     set_seed(cfg.seed)
@@ -247,7 +254,9 @@ def walk_forward_evaluate(cfg: Config):
     all_pred = []
     all_zero = []
     all_mean = []
+    all_ridge = []
     all_dates = []
+
 
     print(f"Running {len(folds)} walk-forward folds...")
 
@@ -263,6 +272,7 @@ def walk_forward_evaluate(cfg: Config):
         all_pred.append(result["y_pred"])
         all_zero.append(result["y_zero"])
         all_mean.append(result["y_mean"])
+        all_ridge.append(result["y_ridge"])
         all_dates.append(dates_all[test_start:test_end])
 
         print(
@@ -277,6 +287,7 @@ def walk_forward_evaluate(cfg: Config):
     y_pred = np.concatenate(all_pred)
     y_zero = np.concatenate(all_zero)
     y_mean = np.concatenate(all_mean)
+    y_ridge = np.concatenate(all_ridge)
     dates = np.concatenate(all_dates)
 
     print("\nWalk-Forward Aggregated Metrics")
@@ -293,6 +304,12 @@ def walk_forward_evaluate(cfg: Config):
         f"Corr={correlation(y_true, y_mean):.4f}"
     )
     print(
+        f"  Ridge Baseline MAE={mae(y_true, y_ridge):.6f} "
+        f"RMSE={rmse(y_true, y_ridge):.6f} "
+        f"DA={directional_accuracy(y_true, y_ridge):.2f}% "
+        f"Corr={correlation(y_true, y_ridge):.4f}"
+    )
+    print(
         f"  BiLSTM         MAE={mae(y_true, y_pred):.6f} "
         f"RMSE={rmse(y_true, y_pred):.6f} "
         f"DA={directional_accuracy(y_true, y_pred):.2f}% "
@@ -302,6 +319,7 @@ def walk_forward_evaluate(cfg: Config):
     plt.figure(figsize=(12, 5))
     plt.plot(dates, y_true, label="Actual")
     plt.plot(dates, y_zero, label="Zero baseline")
+    plt.plot(dates, y_ridge, label="Ridge baseline")
     plt.plot(dates, y_pred, label="BiLSTM")
     plt.title(f"{cfg.ticker} Walk-Forward {cfg.horizon}-Day Forward Log Return Prediction")
     plt.xlabel("Date")

@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
 
 @dataclass(frozen=True)
 class Config:
@@ -6,22 +7,43 @@ class Config:
     start: str = "2015-01-01"
     end: str = "2025-01-01"
 
-    # Feature + target setup
+    # Forecasting setup
     lookback: int = 60
-    horizon: int = 1  # predict t+horizon close
-    target_col: str = "Close"
+    horizon: int = 5
+    target_type: str = "forward_log_return"
 
-    # Train / eval split
+    feature_cols: list[str] = field(default_factory=lambda: [
+        "log_ret_1",
+        "log_ret_5",
+        "log_ret_10",
+        "vol_10",
+        "vol_30",
+        "mom_10",
+        "mom_30",
+        "rsi_14",
+        "ma_gap_10",
+        "ma_gap_30",
+        "ema_gap_10",
+        "ema_gap_30",
+        "hl_range",
+        "oc_return",
+        "volume_change",
+        "volume_ratio_10",
+    ])
+
+    # Fixed split benchmark
     train_ratio: float = 0.75
-    val_ratio: float = 0.10  # remaining goes to test
+    val_ratio: float = 0.10
 
-    # Walk-forward evaluation (more credible than random split)
+    # Walk-forward evaluation
     use_walk_forward: bool = True
-    walk_step: int = 20  # re-train every N days
+    walk_step: int = 60
+    min_train_size: int = 500
+    val_size: int = 180
 
     # Model
-    hidden_size: int = 64
-    num_layers: int = 2
+    hidden_size: int = 32
+    num_layers: int = 1
     dropout: float = 0.2
 
     # Optimization
@@ -32,6 +54,13 @@ class Config:
     patience: int = 6
     grad_clip: float = 1.0
     seed: int = 42
+
+    # Loss
+    loss_name: str = "huber"
+    huber_delta: float = 1.0
+
+    # Target handling
+    demean_target: bool = True
 
     # Output
     out_models: str = "outputs/models"
