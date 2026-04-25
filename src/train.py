@@ -11,7 +11,8 @@ from data_loader import fetch_ohlcv
 from features import add_indicators, make_supervised
 from dataset import SequenceDataset, make_sequences
 from model import BiLSTMRegressor
-from baselines import mae, rmse, directional_accuracy, correlation, baseline_zero, baseline_mean
+from baselines import baseline_zero, baseline_mean
+from evaluation.metrics import compute_all_metrics, format_metrics
 from utils import set_seed, ensure_dirs, device
 
 
@@ -24,6 +25,10 @@ def time_split(df: pd.DataFrame, train_ratio: float, val_ratio: float):
     val = df.iloc[n_train:n_train + n_val].copy()
     test = df.iloc[n_train + n_val:].copy()
     return train, val, test
+
+
+def print_metric_row(label: str, y_true: np.ndarray, y_pred: np.ndarray) -> None:
+    print(f"  {label:<10} {format_metrics(compute_all_metrics(y_true, y_pred))}")
 
 
 def train_one(cfg: Config):
@@ -83,30 +88,10 @@ def train_one(cfg: Config):
     base_mean_te = baseline_mean(yte_true, train_mean_target)
 
     print("Baselines")
-    print(
-        f"  Val  Zero  MAE={mae(yva_true, base_zero_va):.6f} "
-        f"RMSE={rmse(yva_true, base_zero_va):.6f} "
-        f"DA={directional_accuracy(yva_true, base_zero_va):.2f}% "
-        f"Corr={correlation(yva_true, base_zero_va):.4f}"
-    )
-    print(
-        f"  Val  Mean  MAE={mae(yva_true, base_mean_va):.6f} "
-        f"RMSE={rmse(yva_true, base_mean_va):.6f} "
-        f"DA={directional_accuracy(yva_true, base_mean_va):.2f}% "
-        f"Corr={correlation(yva_true, base_mean_va):.4f}"
-    )
-    print(
-        f"  Test Zero  MAE={mae(yte_true, base_zero_te):.6f} "
-        f"RMSE={rmse(yte_true, base_zero_te):.6f} "
-        f"DA={directional_accuracy(yte_true, base_zero_te):.2f}% "
-        f"Corr={correlation(yte_true, base_zero_te):.4f}"
-    )
-    print(
-        f"  Test Mean  MAE={mae(yte_true, base_mean_te):.6f} "
-        f"RMSE={rmse(yte_true, base_mean_te):.6f} "
-        f"DA={directional_accuracy(yte_true, base_mean_te):.2f}% "
-        f"Corr={correlation(yte_true, base_mean_te):.4f}"
-    )
+    print_metric_row("Val Zero", yva_true, base_zero_va)
+    print_metric_row("Val Mean", yva_true, base_mean_va)
+    print_metric_row("Test Zero", yte_true, base_zero_te)
+    print_metric_row("Test Mean", yte_true, base_mean_te)
 
     dev = device()
     model = BiLSTMRegressor(
@@ -186,9 +171,7 @@ def train_one(cfg: Config):
             f"Epoch {epoch}: "
             f"train_mse={np.mean(tr_losses):.6f} "
             f"val_mse={va_loss:.6f} "
-            f"val_mae={mae(trues_eval, preds_eval):.6f} "
-            f"val_da={directional_accuracy(trues_eval, preds_eval):.2f}% "
-            f"val_corr={correlation(trues_eval, preds_eval):.4f}"
+            f"{format_metrics(compute_all_metrics(trues_eval, preds_eval))}"
         )
 
         if va_loss < best_val - 1e-6:

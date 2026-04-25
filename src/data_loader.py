@@ -1,7 +1,16 @@
+import os
+
 import pandas as pd
 import yfinance as yf
 
+
+def configure_yfinance_cache(cache_dir: str = "outputs/cache/yfinance") -> None:
+    os.makedirs(cache_dir, exist_ok=True)
+    yf.set_tz_cache_location(cache_dir)
+
+
 def fetch_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
+    configure_yfinance_cache()
     df = yf.download(ticker, start=start, end=end, auto_adjust=False, progress=False)
     if df is None or df.empty:
         raise ValueError(f"No data returned for {ticker}.")

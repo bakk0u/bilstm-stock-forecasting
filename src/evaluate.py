@@ -1,8 +1,6 @@
 import numpy as np
+from pathlib import Path
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import torch
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader
@@ -12,7 +10,10 @@ from data_loader import fetch_ohlcv
 from features import add_indicators, make_supervised
 from dataset import SequenceDataset, make_sequences
 from model import BiLSTMRegressor
-from baselines import mae, rmse, directional_accuracy, correlation, baseline_zero, baseline_mean
+from baselines import baseline_zero, baseline_mean
+from evaluation.metrics import compute_all_metrics, format_metrics
+from evaluation.plots import plot_cumulative_returns, plot_errors, plot_predictions
+from evaluation.trading import evaluate_strategy, format_strategy_metrics
 from utils import ensure_dirs, device
 
 
@@ -28,12 +29,32 @@ def time_split(df: pd.DataFrame, train_ratio: float, val_ratio: float):
 
 
 def load_checkpoint(path: str):
+    if not Path(path).exists():
+        raise FileNotFoundError(
+            f"Checkpoint not found: {path}\n"
+            "Run `python src/train.py` first to train and save the model checkpoint, "
+            "then rerun `python src/evaluate.py`."
+        )
     return torch.load(path, map_location="cpu", weights_only=False)
+
+
+def print_metric_row(label: str, y_true: np.ndarray, y_pred: np.ndarray) -> None:
+    print(f"  {label:<14} {format_metrics(compute_all_metrics(y_true, y_pred))}")
+
+
+def print_strategy_row(label: str, y_true: np.ndarray, y_pred: np.ndarray) -> None:
+    metrics = evaluate_strategy(y_true, y_pred)
+    print(f"  {label:<14} {format_strategy_metrics(metrics)}")
 
 
 def evaluate(cfg: Config, ckpt_path: str):
     ensure_dirs(cfg.out_plots)
     dev = device()
+
+    ckpt = load_checkpoint(ckpt_path)
+    feature_cols = ckpt["feature_cols"]
+    train_mean_target = float(ckpt["train_mean_target"])
+    demean_target = bool(ckpt.get("demean_target", False))
 
     df = fetch_ohlcv(cfg.ticker, cfg.start, cfg.end)
     df = add_indicators(df)
@@ -41,11 +62,6 @@ def evaluate(cfg: Config, ckpt_path: str):
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
-
-    ckpt = load_checkpoint(ckpt_path)
-    feature_cols = ckpt["feature_cols"]
-    train_mean_target = float(ckpt["train_mean_target"])
-    demean_target = bool(ckpt.get("demean_target", False))
 
     scaler = StandardScaler()
     scaler.mean_ = ckpt["scaler_mean"]
@@ -106,43 +122,31 @@ def evaluate(cfg: Config, ckpt_path: str):
         trues = trues + train_mean_target
 
     print("Test Metrics")
-    print(
-        f"  Zero Baseline  MAE={mae(yte_true, base_zero):.6f} "
-        f"RMSE={rmse(yte_true, base_zero):.6f} "
-        f"DA={directional_accuracy(yte_true, base_zero):.2f}% "
-        f"Corr={correlation(yte_true, base_zero):.4f}"
-    )
-    print(
-        f"  Mean Baseline  MAE={mae(yte_true, base_mean):.6f} "
-        f"RMSE={rmse(yte_true, base_mean):.6f} "
-        f"DA={directional_accuracy(yte_true, base_mean):.2f}% "
-        f"Corr={correlation(yte_true, base_mean):.4f}"
-    )
-    print(
-        f"  BiLSTM         MAE={mae(trues, preds):.6f} "
-        f"RMSE={rmse(trues, preds):.6f} "
-        f"DA={directional_accuracy(trues, preds):.2f}% "
-        f"Corr={correlation(trues, preds):.4f}"
-    )
+    print_metric_row("Zero Baseline", yte_true, base_zero)
+    print_metric_row("Mean Baseline", yte_true, base_mean)
+    print_metric_row("BiLSTM", trues, preds)
+
+    print("\nTrading Metrics")
+    print_strategy_row("Zero Baseline", yte_true, base_zero)
+    print_strategy_row("Mean Baseline", yte_true, base_mean)
+    print_strategy_row("BiLSTM", trues, preds)
 
     print(f"Mean actual return: {np.mean(trues):.6f}")
     print(f"Mean predicted return: {np.mean(preds):.6f}")
     print(f"Std actual return: {np.std(trues):.6f}")
     print(f"Std predicted return: {np.std(preds):.6f}")
 
-    plt.figure(figsize=(11, 5))
-    plt.plot(dates_aligned, trues, label="Actual")
-    plt.plot(dates_aligned, base_zero, label="Zero baseline")
-    plt.plot(dates_aligned, preds, label="BiLSTM")
-    plt.title(f"{cfg.ticker} {cfg.horizon}-Day Forward Log Return Prediction (Test)")
-    plt.xlabel("Date")
-    plt.ylabel("Forward Log Return")
-    plt.legend()
-    plt.tight_layout()
+    predictions_plot = f"{cfg.out_plots}/{cfg.ticker}_test_predictions.png"
+    errors_plot = f"{cfg.out_plots}/{cfg.ticker}_test_prediction_errors.png"
+    returns_plot = f"{cfg.out_plots}/{cfg.ticker}_test_cumulative_returns.png"
 
-    out = f"{cfg.out_plots}/{cfg.ticker}_test_predictions.png"
-    plt.savefig(out, dpi=160)
-    print(f"Saved plot: {out}")
+    plot_predictions(trues, preds, dates=dates_aligned, output_path=predictions_plot)
+    plot_errors(trues, preds, dates=dates_aligned, output_path=errors_plot)
+    plot_cumulative_returns(trues, preds, dates=dates_aligned, output_path=returns_plot)
+
+    print(f"Saved plot: {predictions_plot}")
+    print(f"Saved plot: {errors_plot}")
+    print(f"Saved plot: {returns_plot}")
 
 
 if __name__ == "__main__":

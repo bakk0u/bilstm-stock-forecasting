@@ -40,6 +40,7 @@ class Config:
     walk_step: int = 60
     min_train_size: int = 500
     val_size: int = 180
+    classification_thresholds: tuple[float, ...] = (0.5, 0.6, 0.7)
 
     # Model
     hidden_size: int = 32
