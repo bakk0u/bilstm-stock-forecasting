@@ -1,42 +1,102 @@
-# BiLSTM Stock Forecasting: Short-Horizon Return Prediction
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/readme/hero-mobile.svg">
+  <img src="docs/readme/hero.svg" width="100%" alt="BiLSTM Stock Forecasting — Forecast returns. Challenge the model.">
+</picture>
 
-This project is a quant-style machine learning workflow for forecasting short-horizon equity returns. It intentionally avoids the common "predict the stock price" framing and instead models the 5-day forward log return of SPY from historical OHLCV-derived features.
+<p align="center"><a href="#getting-started"><b>Setup ↗</b></a> &nbsp; · &nbsp; <a href="#evidence-at-a-glance"><b>Results ↗</b></a> &nbsp; · &nbsp; <a href="docs/final_report.md"><b>Report ↗</b></a></p>
 
-The goal is not to claim a profitable trading system. The goal is to demonstrate a disciplined financial ML process: leakage-aware preprocessing, chronological validation, baseline comparisons, walk-forward testing, and honest interpretation of weak or unstable signals.
+A PyTorch sequence-model workflow for SPY five-day forward log returns, using chronological validation and comparisons against zero, mean-return and Ridge baselines.
 
-## TL;DR
+## Evidence at a glance
 
-- Predicts 5-day forward log returns for SPY, not raw stock prices.
-- Uses a PyTorch BiLSTM with chronological splits, train-only scaling, and expanding-window walk-forward validation.
-- Benchmarks against zero, mean-return, and Ridge baselines instead of evaluating the neural network in isolation.
-- Key takeaway: in this setup, simple baselines are hard to beat, and the BiLSTM does not show robust outperformance.
+| Focus | What this repository contains |
+| :--- | :--- |
+| **Main finding** | The BiLSTM does not robustly beat the mean baseline. |
+| **Walk-forward MAE** | Mean baseline: 0.017701 · BiLSTM: 0.020567. |
+| **Trading diagnostics** | Overlapping five-day returns; not executable portfolio performance. |
 
-## Key Results
+## Project preview
 
-Walk-forward full-timeline results are the main benchmark because they better reflect repeated out-of-sample forecasting.
+![Committed project artifact](outputs/plots/SPY_test_predictions.png)
 
-| Model | MAE | RMSE | Directional Accuracy | Sharpe |
-|---|---:|---:|---:|---:|
-| Mean baseline | 0.017701 | 0.025390 | 61.30% | 3.90 |
-| BiLSTM | 0.020567 | 0.030070 | 53.36% | 3.26 |
+## How the pieces fit
 
-The BiLSTM is more complex, but it does not outperform the mean baseline on these metrics. The Sharpe values come from the diagnostic long/flat evaluation and should be interpreted carefully because the strategy compounds overlapping 5-day forward returns.
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/readme/workflow-mobile.svg">
+  <img src="docs/readme/workflow.svg" width="100%" alt="Build: Historical OHLCV features / Validate: Chronological and expanding splits / Benchmark: BiLSTM against simple baselines">
+</picture>
 
-## Example Plots
+## Getting started
 
-Prediction versus realized forward returns:
+<details>
+<summary><b>Open setup, execution and configuration instructions</b></summary>
 
-![Actual vs predicted forward returns](outputs/plots/SPY_test_predictions.png)
+## Setup
 
-Walk-forward cumulative long/flat diagnostic versus buy-and-hold:
+```bash
+python -m venv .venv
+```
 
-![Walk-forward cumulative returns](outputs/plots/SPY_walk_forward_cumulative_returns.png)
+Windows PowerShell:
 
-Walk-forward fold-level metric evolution:
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-![Walk-forward fold metrics](outputs/plots/SPY_walk_forward_fold_metrics.png)
+macOS/Linux:
 
-Feature ablation diagnostics are generated at `outputs/metrics/feature_ablation.csv` and `outputs/plots/feature_ablation.png`.
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Run Commands
+
+Train the fixed-split BiLSTM checkpoint:
+
+```powershell
+$env:PYTHONPATH='src'
+python src\train.py
+```
+
+Evaluate the saved checkpoint on the fixed test split:
+
+```powershell
+$env:PYTHONPATH='src'
+python src\evaluate.py
+```
+
+Run expanding-window walk-forward evaluation:
+
+```powershell
+$env:PYTHONPATH='src'
+python src\walk_forward.py
+```
+
+Run the feature ablation diagnostic:
+
+```powershell
+$env:PYTHONPATH='src'
+python src\feature_ablation.py
+```
+
+On macOS/Linux, use:
+
+```bash
+export PYTHONPATH=src
+python src/train.py
+python src/evaluate.py
+python src/walk_forward.py
+python src/feature_ablation.py
+```
+
+</details>
+
+## Technical reference
+
+<details>
+<summary><b>Methods and implementation</b></summary>
 
 ## What Is Predicted
 
@@ -105,6 +165,22 @@ Baselines:
 - Ridge regression baseline in walk-forward evaluation
 
 The baselines are important. In noisy return prediction, a model that does not beat simple baselines is not providing convincing predictive value, even if it produces visually plausible forecasts.
+
+</details>
+
+<details>
+<summary><b>Results and interpretation</b></summary>
+
+## Key Results
+
+Walk-forward full-timeline results are the main benchmark because they better reflect repeated out-of-sample forecasting.
+
+| Model | MAE | RMSE | Directional Accuracy | Sharpe |
+|---|---:|---:|---:|---:|
+| Mean baseline | 0.017701 | 0.025390 | 61.30% | 3.90 |
+| BiLSTM | 0.020567 | 0.030070 | 53.36% | 3.26 |
+
+The BiLSTM is more complex, but it does not outperform the mean baseline on these metrics. The Sharpe values come from the diagnostic long/flat evaluation and should be interpreted carefully because the strategy compounds overlapping 5-day forward returns.
 
 ## Evaluation
 
@@ -212,6 +288,44 @@ This suggests possible redundancy or noise in some technical indicators for shor
 - Simple baselines remain difficult to beat, which is a realistic outcome for short-horizon equity return prediction.
 - Trading diagnostics connect predictions to decisions, but overlapping 5-day forward returns make them diagnostic rather than production backtest results.
 
+## Current Conclusion
+
+This project shows a complete and realistic financial ML workflow, not a claim of market-beating performance. The BiLSTM does not outperform the mean-return baseline in the current fixed-split or walk-forward tests. The classification and feature ablation extensions add useful diagnostics, but they do not overturn the main conclusion: short-horizon equity return prediction is noisy, simple baselines remain hard to beat, and careful evaluation matters more than model complexity.
+
+</details>
+
+<details>
+<summary><b>Project context and reference</b></summary>
+
+# BiLSTM Stock Forecasting: Short-Horizon Return Prediction
+
+This project is a quant-style machine learning workflow for forecasting short-horizon equity returns. It intentionally avoids the common "predict the stock price" framing and instead models the 5-day forward log return of SPY from historical OHLCV-derived features.
+
+The goal is not to claim a profitable trading system. The goal is to demonstrate a disciplined financial ML process: leakage-aware preprocessing, chronological validation, baseline comparisons, walk-forward testing, and honest interpretation of weak or unstable signals.
+
+## TL;DR
+
+- Predicts 5-day forward log returns for SPY, not raw stock prices.
+- Uses a PyTorch BiLSTM with chronological splits, train-only scaling, and expanding-window walk-forward validation.
+- Benchmarks against zero, mean-return, and Ridge baselines instead of evaluating the neural network in isolation.
+- Key takeaway: in this setup, simple baselines are hard to beat, and the BiLSTM does not show robust outperformance.
+
+## Example Plots
+
+Prediction versus realized forward returns:
+
+![Actual vs predicted forward returns](outputs/plots/SPY_test_predictions.png)
+
+Walk-forward cumulative long/flat diagnostic versus buy-and-hold:
+
+![Walk-forward cumulative returns](outputs/plots/SPY_walk_forward_cumulative_returns.png)
+
+Walk-forward fold-level metric evolution:
+
+![Walk-forward fold metrics](outputs/plots/SPY_walk_forward_fold_metrics.png)
+
+Feature ablation diagnostics are generated at `outputs/metrics/feature_ablation.csv` and `outputs/plots/feature_ablation.png`.
+
 ## Outputs
 
 Generated artifacts include:
@@ -258,66 +372,6 @@ Generated artifacts include:
 - `src/feature_ablation.py` - Ridge walk-forward feature ablation diagnostic
 - `docs/final_report.md` - project methodology and results report
 
-## Setup
-
-```bash
-python -m venv .venv
-```
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-macOS/Linux:
-
-```bash
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Run Commands
-
-Train the fixed-split BiLSTM checkpoint:
-
-```powershell
-$env:PYTHONPATH='src'
-python src\train.py
-```
-
-Evaluate the saved checkpoint on the fixed test split:
-
-```powershell
-$env:PYTHONPATH='src'
-python src\evaluate.py
-```
-
-Run expanding-window walk-forward evaluation:
-
-```powershell
-$env:PYTHONPATH='src'
-python src\walk_forward.py
-```
-
-Run the feature ablation diagnostic:
-
-```powershell
-$env:PYTHONPATH='src'
-python src\feature_ablation.py
-```
-
-On macOS/Linux, use:
-
-```bash
-export PYTHONPATH=src
-python src/train.py
-python src/evaluate.py
-python src/walk_forward.py
-python src/feature_ablation.py
-```
-
 ## Future Work (Quant-Oriented)
 
 - Reframe the task as classification, such as predicting up/down or positive excess return.
@@ -325,6 +379,5 @@ python src/feature_ablation.py
 - Compare against alternative models such as logistic regression, gradient-boosted trees, temporal CNNs, and simpler regularized linear models.
 - Add regime detection features to separate low-volatility trending periods from high-volatility drawdown periods.
 
-## Current Conclusion
+</details>
 
-This project shows a complete and realistic financial ML workflow, not a claim of market-beating performance. The BiLSTM does not outperform the mean-return baseline in the current fixed-split or walk-forward tests. The classification and feature ablation extensions add useful diagnostics, but they do not overturn the main conclusion: short-horizon equity return prediction is noisy, simple baselines remain hard to beat, and careful evaluation matters more than model complexity.
