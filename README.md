@@ -17,7 +17,7 @@ A PyTorch sequence-model workflow for SPY five-day forward log returns, using ch
 
 ## Project preview
 
-![Committed project artifact](outputs/plots/SPY_test_predictions.png)
+![Predicted and observed five-day SPY returns on the test period](outputs/plots/SPY_test_predictions.png)
 
 ## How the pieces fit
 
